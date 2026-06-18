@@ -45,6 +45,20 @@ textarea{resize:vertical; min-height:80px}
 .req{color:#f87171}
 .chk-row{display:flex; align-items:center; gap:8px; margin-top:10px; cursor:pointer; font-size:.92rem; color:var(--text)}
 .chk-row input{width:auto; cursor:pointer; transform:scale(1.2)}
+/* ===== แนบรูปภาพ ===== */
+.photo-box{ border:1px dashed var(--border); border-radius:10px; padding:12px; margin-top:14px }
+.photo-title{ font-size:.82rem; color:var(--subtext); margin-bottom:10px }
+.photo-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px }
+.photo-lab{ font-size:.8rem; margin-bottom:6px; font-weight:600 }
+.photo-add{ display:flex; align-items:center; justify-content:center; height:90px; border:1px solid var(--border); border-radius:8px; cursor:pointer; color:var(--subtext); font-size:.85rem; background:var(--card); text-align:center; padding:8px }
+.photo-add:hover{ border-color:var(--primary) }
+.photo-thumb{ position:relative }
+.photo-thumb img{ width:100%; height:120px; object-fit:cover; border-radius:8px; border:1px solid var(--border); display:block }
+.photo-del{ position:absolute; top:6px; right:6px; width:28px; height:28px; border-radius:50%; border:none; background:rgba(0,0,0,.6); color:#fff; cursor:pointer; font-size:14px }
+/* รูปในรายงาน */
+.rep-photos{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:18px }
+.rep-photo img{ width:100%; height:auto; max-height:340px; object-fit:contain; border:1px solid #ddd; border-radius:4px; display:block; background:#f8fafc }
+.rep-photo .cap{ text-align:center; font-size:.8rem; color:#555; margin-top:6px }
 /* ===== ปฏิทินเลือกวันที่ ===== */
 .picker-btn{
   width:100%; padding:13px; border-radius:10px; border:1px solid var(--border);
@@ -231,6 +245,7 @@ textarea{resize:vertical; min-height:80px}
     <h2 class="no-print">👁️ ตัวอย่างรายงาน <span style="font-weight:400;font-size:.8rem;color:var(--subtext)">(ย่อพอดีจอ · ส่งออกเป็น A4)</span></h2>
     <div class="report-scroll">
       <div id="report" class="report"></div>
+      <div id="photoReport" class="report" style="margin-top:16px; display:none"></div>
     </div>
   </section>
 
@@ -289,10 +304,12 @@ function areaFt2In(w,h){ return inToFt(parseFloat(w)||0)*inToFt(parseFloat(h)||0
 function newUnit(mode="diffuser"){
   if(mode==="diffuser") return {name:"",mode,heads:[ blankHead() ]};
   const pts=PTS[mode];
-  return {name:"",mode,type:"",ts:"",tr:"",faceTemp:["",""],coilCount:1,coils:[ blankCoil(pts) ]};
+  const u={name:"",mode,type:"",ts:"",tr:"",faceTemp:["",""],coilCount:1,coils:[ blankCoil(pts) ]};
+  if(mode==="ahu") u.photos=["",""];   // AHU: รูประดับเครื่อง 2 ภาพ
+  return u;
 }
-function blankHead(){ return {w:"",l:"",ts:"",tr:"",closed:false,note:"",v:["","","",""]}; }
-function blankCoil(pts){ return {w:"",h:"",v:Array(pts).fill("")}; }
+function blankHead(){ return {w:"",l:"",ts:"",tr:"",closed:false,note:"",v:["","","",""],photos:["",""]}; }   // หัวจ่าย: 2 ภาพ/หัว
+function blankCoil(pts){ return {w:"",h:"",v:Array(pts).fill(""),photos:["","",""]}; }                        // คอยล์: 3 ภาพ/คอยล์
 
 function calcUnit(u){
   let cfm=0,allV=[],parts=[];
@@ -358,6 +375,7 @@ function renderUnits(){
       </div>
       ${units.length>1?`<span class="hint" style="display:block;margin:-8px 0 12px">🔒 ล็อกประเภทไว้ให้ตรงกันทุกเครื่อง — ลบให้เหลือเครื่องเดียวเพื่อเปลี่ยนประเภท</span>`:""}
       ${u.mode==="diffuser" ? diffuserUI(u,ui) : coilUI(u,ui)}
+      ${photoUI(u,ui)}
       <div class="unit-result" id="res-${ui}"></div>
     `;
     list.appendChild(div);
@@ -404,10 +422,44 @@ function diffuserUI(u,ui){
           <label>หมายเหตุ (เฉพาะหัวนี้)</label>
           <input type="text" data-u="${ui}" data-head="${hi}" data-f="note" value="${(hd.note||'').replace(/"/g,'&quot;')}" placeholder="เช่น ไม่มีหัวจ่าย / หัวจ่ายสกปรก">
         </div>
+        <div class="photo-box" style="margin-top:10px">
+          <div class="photo-title">📸 รูปภาพประกอบหัวจ่ายนี้</div>
+          ${photoGrid(hd.photos||(hd.photos=["",""]), `h|${ui}|${hi}`, ()=>"ภาพรวม")}
+        </div>
       </div>`;
   });
   html+=`<button class="add-mini" data-addhead="${ui}" ${u.heads.length>=MAX_HEAD?"disabled":""}>➕ เพิ่มหัวจ่าย (${u.heads.length}/${MAX_HEAD})</button>`;
   return html;
+}
+
+// สร้างกริดรูปจาก photos array + รหัสตำแหน่ง (key) และป้ายกำกับ
+// key รูปแบบ: "u|<ui>|<pi>"  หรือ "h|<ui>|<hi>|<pi>"  หรือ "c|<ui>|<ci>|<pi>"
+function photoGrid(photos, keyPrefix, labelFn){
+  let cells="";
+  photos.forEach((img,pi)=>{
+    const lab=labelFn(pi);
+    const key=`${keyPrefix}|${pi}`;
+    cells+=`<div class="photo-cell">
+      <div class="photo-lab">${lab}</div>
+      ${img
+        ? `<div class="photo-thumb"><img src="${img}" alt="${lab}"><button type="button" class="photo-del" data-delphoto="${key}" title="ลบรูป">✕</button></div>`
+        : `<label class="photo-add">
+             <input type="file" accept="image/*" data-photo="${key}" style="display:none">
+             <span>📷 แตะเพื่อแนบรูป</span>
+           </label>`}
+    </div>`;
+  });
+  return `<div class="photo-grid">${cells}</div>`;
+}
+// กล่องรูประดับเครื่อง (ใช้กับ AHU)
+function photoUI(u,ui){
+  if(u.mode!=="ahu") return "";  // หัวจ่าย/BU แนบรูปในแต่ละหัว/คอยล์แทน
+  const labels=["ภาพรวมเครื่อง","ภาพคอยล์เย็น"];
+  if(!u.photos) u.photos=["",""];
+  return `<div class="photo-box">
+    <div class="photo-title">📸 รูปภาพประกอบ (แสดงในหน้าภาพประกอบของรายงาน)</div>
+    ${photoGrid(u.photos, `u|${ui}`, pi=>labels[pi])}
+  </div>`;
 }
 
 function coilUI(u,ui){
@@ -451,6 +503,10 @@ function coilUI(u,ui){
         <div class="pts ${colClass}">
           ${co.v.map((val,pi)=>`<div class="pt"><span class="pn">${pi+1}</span><input type="number" inputmode="decimal" data-u="${ui}" data-coil="${ci}" data-pt="${pi}" value="${val}" placeholder="0"></div>`).join("")}
         </div>
+        ${u.mode==="bu" ? `<div class="photo-box" style="margin-top:10px">
+          <div class="photo-title">📸 รูปภาพประกอบคอยล์ที่ ${ci+1}</div>
+          ${photoGrid(co.photos||(co.photos=["","",""]), `c|${ui}|${ci}`, ()=>`ภาพรวมคอยล์ ${ci+1}`)}
+        </div>` : ""}
       </div>`;
   });
   html+=`
@@ -541,9 +597,53 @@ function bindEvents(){
     };
     inp.oninput=handler; inp.onchange=handler;
   });
+  // หาตำแหน่ง photos array จาก key: "u|ui|pi" / "h|ui|hi|pi" / "c|ui|ci|pi"
+  function resolvePhoto(key){
+    const p=key.split("|"); const kind=p[0];
+    if(kind==="u"){ const ui=+p[1]; if(!units[ui].photos) units[ui].photos=["",""]; return {arr:units[ui].photos, pi:+p[2]}; }
+    if(kind==="h"){ const ui=+p[1], hi=+p[2]; const hd=units[ui].heads[hi]; if(!hd.photos) hd.photos=["",""]; return {arr:hd.photos, pi:+p[3]}; }
+    if(kind==="c"){ const ui=+p[1], ci=+p[2]; const co=units[ui].coils[ci]; if(!co.photos) co.photos=["","",""]; return {arr:co.photos, pi:+p[3]}; }
+    return null;
+  }
+  // แนบรูป
+  document.querySelectorAll("[data-photo]").forEach(inp=>inp.onchange=async e=>{
+    const loc=resolvePhoto(e.target.dataset.photo);
+    const file=e.target.files && e.target.files[0]; if(!file||!loc) return;
+    try{
+      const data=await resizePhoto(file, 1200, 0.7);
+      loc.arr[loc.pi]=data;
+      renderUnits(); save();
+    }catch(err){ alert("ไม่สามารถโหลดรูปนี้ได้ ลองเลือกรูปใหม่อีกครั้ง"); console.error(err); }
+  });
+  // ลบรูป
+  document.querySelectorAll("[data-delphoto]").forEach(b=>b.onclick=e=>{
+    const loc=resolvePhoto(e.currentTarget.dataset.delphoto);
+    if(loc) loc.arr[loc.pi]="";
+    renderUnits(); save();
+  });
 }
 
-/* ===== คำนวณ + อัปเดตผล ===== */
+// ย่อรูปด้วย canvas ให้เล็กลงก่อนเก็บ (ลดขนาดไฟล์)
+function resizePhoto(file, maxDim, quality){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error("read fail"));
+    reader.onload=ev=>{
+      const img=new Image();
+      img.onload=()=>{
+        let {width:w, height:h}=img;
+        if(w>=h && w>maxDim){ h=Math.round(h*maxDim/w); w=maxDim; }
+        else if(h>w && h>maxDim){ w=Math.round(w*maxDim/h); h=maxDim; }
+        const cv=document.createElement("canvas"); cv.width=w; cv.height=h;
+        cv.getContext("2d").drawImage(img,0,0,w,h);
+        resolve(cv.toDataURL("image/jpeg",quality));
+      };
+      img.onerror=()=>reject(new Error("img fail"));
+      img.src=ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 function recompute(){
   let grandCFM=0;
   units.forEach((u,ui)=>{
@@ -843,17 +943,72 @@ function renderReport(grandCFM){
     </div>
     <div class="rep-foot">เอกสารนี้สร้างโดยโปรแกรมคำนวณ CFM · สูตร CFM = พื้นที่หน้าตัด (ft²) × ความเร็วลมเฉลี่ย (FPM)</div>
   `;
-}
 
-/* ===== บันทึก/โหลด ===== */
+  // ===== หน้าภาพประกอบ (แยกออกมา) =====
+  const pr=el("photoReport");
+  // รวบรวมรูปทั้งหมดเป็นกลุ่มๆ ตามโหมด
+  function collectGroups(u,ui){
+    const groups=[]; // {title, items:[{img,cap}]}
+    if(u.mode==="ahu"){
+      const labs=["ภาพรวมเครื่อง","ภาพคอยล์เย็น"];
+      const items=(u.photos||[]).map((p,pi)=>p?{img:p,cap:labs[pi]}:null).filter(Boolean);
+      if(items.length) groups.push({title:`เครื่องที่ ${ui+1}: ${u.name||MODE_TH[u.mode]} (${MODE_TH[u.mode]})`, items});
+    }else if(u.mode==="diffuser"){
+      u.heads.forEach((hd,hi)=>{
+        const items=(hd.photos||[]).map(p=>p?{img:p,cap:"ภาพรวม"}:null).filter(Boolean);
+        if(items.length) groups.push({title:`เครื่องที่ ${ui+1}: ${u.name||MODE_TH[u.mode]} — หัวจ่ายที่ ${hi+1}`, items});
+      });
+    }else{ // bu
+      u.coils.forEach((co,ci)=>{
+        const items=(co.photos||[]).map(p=>p?{img:p,cap:`ภาพรวมคอยล์ ${ci+1}`}:null).filter(Boolean);
+        if(items.length) groups.push({title:`เครื่องที่ ${ui+1}: ${u.name||MODE_TH[u.mode]} — คอยล์ที่ ${ci+1}`, items});
+      });
+    }
+    return groups;
+  }
+  const allGroups=[];
+  units.forEach((u,ui)=> allGroups.push(...collectGroups(u,ui)));
+  if(allGroups.length){
+    let ph=`<div class="rep-top"><h1>ภาพประกอบรายงาน</h1><div class="s">Photo Documentation</div></div>
+      <div class="rep-meta"><span><b>ผู้กรอกข้อมูล:</b> ${insp}</span><span><b>${measureDate?"วันที่ตรวจวัด":"วันที่"}:</b> ${measureDate?thaiDate(measureDTValue(), !!getMeasureTime()):thaiDate()}</span></div>`;
+    allGroups.forEach(g=>{
+      ph+=`<div class="rep-h2">${g.title}</div><div class="rep-photos">`;
+      g.items.forEach(it=>{ ph+=`<div class="rep-photo"><img src="${it.img}"><div class="cap">${it.cap}</div></div>`; });
+      ph+=`</div>`;
+    });
+    ph+=`<div class="rep-foot">เอกสารนี้สร้างโดยโปรแกรมคำนวณ CFM · ภาพประกอบการตรวจวัด</div>`;
+    pr.innerHTML=ph; pr.style.display="block";
+  }else{
+    pr.innerHTML=""; pr.style.display="none";
+  }
+}
 function save(){
-  sessionStorage.setItem("cfm_v3",JSON.stringify({units,inspector:el("inspector").value,note:el("note").value,measureDate,measureTime:getMeasureTime()}));
+  const base={inspector:el("inspector").value,note:el("note").value,measureDate,measureTime:getMeasureTime()};
+  try{
+    sessionStorage.setItem("cfm_v3",JSON.stringify({units,...base}));
+  }catch(e){
+    // พื้นที่เต็ม (มักเพราะรูปเยอะ) -> บันทึกข้อมูลโดยไม่รวมรูป กันข้อมูลตัวเลขหาย
+    try{
+      const lite=units.map(u=>({
+        ...u,
+        photos:undefined,
+        heads:u.heads?u.heads.map(h=>({...h,photos:undefined})):undefined,
+        coils:u.coils?u.coils.map(c=>({...c,photos:undefined})):undefined
+      }));
+      sessionStorage.setItem("cfm_v3",JSON.stringify({units:lite,...base}));
+    }catch(_){}
+  }
 }
 function load(){
   const s=sessionStorage.getItem("cfm_v3"); if(!s)return false;
   try{ const d=JSON.parse(s); units=d.units||[];
-    // รองรับข้อมูลเก่าที่ยังไม่มี faceTemp
-    units.forEach(u=>{ if((u.mode==="bu"||u.mode==="ahu") && !u.faceTemp) u.faceTemp=["",""]; });
+    // รองรับข้อมูลเก่า/เติม photos ให้ครบโครงสร้าง
+    units.forEach(u=>{
+      if((u.mode==="bu"||u.mode==="ahu") && !u.faceTemp) u.faceTemp=["",""];
+      if(u.mode==="ahu" && !u.photos) u.photos=["",""];
+      if(u.heads) u.heads.forEach(h=>{ if(!h.photos) h.photos=["",""]; });
+      if(u.coils) u.coils.forEach(c=>{ if(!c.photos) c.photos=["","",""]; });
+    });
     el("inspector").value=d.inspector||""; el("note").value=d.note||"";
     measureDate=d.measureDate||"";
     if(d.measureTime){ const [h,m]=d.measureTime.split(":"); if(el("hourSel"))el("hourSel").value=h||""; if(el("minSel"))el("minSel").value=m||""; }
@@ -1016,16 +1171,25 @@ function pickScale(elm){
 }
 
 // แคปเจอร์รายงานที่ขนาด A4 เต็ม (บังคับขนาดชั่วคราวเฉพาะตอนสร้างไฟล์)
-async function snapReport(){
-  const rep=el("report");
-  const s={w:rep.style.width, mw:rep.style.maxWidth, mh:rep.style.minHeight, p:rep.style.padding};
-  rep.style.width="794px";           // ความกว้าง A4
-  rep.style.maxWidth="none";
-  rep.style.minHeight="1123px";      // ความสูง A4
-  rep.style.padding="48px 56px";
-  const c=await html2canvas(rep,{scale:pickScale(rep),useCORS:true,backgroundColor:"#ffffff",width:794,windowWidth:794});
-  rep.style.width=s.w; rep.style.maxWidth=s.mw; rep.style.minHeight=s.mh; rep.style.padding=s.p;
+async function snapEl(elm){
+  const s={w:elm.style.width, mw:elm.style.maxWidth, mh:elm.style.minHeight, p:elm.style.padding};
+  elm.style.width="794px"; elm.style.maxWidth="none"; elm.style.minHeight="1123px"; elm.style.padding="48px 56px";
+  const c=await html2canvas(elm,{scale:pickScale(elm),useCORS:true,backgroundColor:"#ffffff",width:794,windowWidth:794});
+  elm.style.width=s.w; elm.style.maxWidth=s.mw; elm.style.minHeight=s.mh; elm.style.padding=s.p;
   return c;
+}
+async function snapReport(){ return snapEl(el("report")); }
+// ใส่รูป canvas ลง PDF แบบแบ่งหน้าอัตโนมัติ
+function addCanvasToPdf(pdf, c, firstNewPage){
+  const pageW=210,pageH=297,m=10, w=pageW-m*2, h=c.height*w/c.width;
+  const img=c.toDataURL("image/png");
+  if(firstNewPage) pdf.addPage();
+  if(h<=pageH-m*2){ pdf.addImage(img,"PNG",m,m,w,h); }
+  else{
+    let left=h, pos=m;
+    pdf.addImage(img,"PNG",m,pos,w,h); left-=(pageH-m*2);
+    while(left>0){ pdf.addPage(); pos=m-(h-left); pdf.addImage(img,"PNG",m,pos,w,h); left-=(pageH-m*2); }
+  }
 }
 
 // เปิด modal แสดงรูป (สำรอง)
@@ -1083,15 +1247,14 @@ el("pdfBtn").onclick=async()=>{
   const b=el("pdfBtn"); b.disabled=true; b.textContent="⏳ กำลังสร้าง...";
   try{
     const c=await snapReport();
-    const img=c.toDataURL("image/png");
     const {jsPDF}=window.jspdf;
     const pdf=new jsPDF("p","mm","a4");
-    const pageW=210,pageH=297,m=10, w=pageW-m*2, h=c.height*w/c.width;
-    if(h<=pageH-m*2){ pdf.addImage(img,"PNG",m,m,w,h); }
-    else{
-      let left=h, pos=m;
-      pdf.addImage(img,"PNG",m,pos,w,h); left-=(pageH-m*2);
-      while(left>0){ pdf.addPage(); pos=m-(h-left); pdf.addImage(img,"PNG",m,pos,w,h); left-=(pageH-m*2); }
+    addCanvasToPdf(pdf, c, false);
+    // หน้าภาพประกอบ (ถ้ามีรูป)
+    const pr=el("photoReport");
+    if(pr && pr.style.display!=="none" && pr.innerHTML.trim()){
+      const c2=await snapEl(pr);
+      addCanvasToPdf(pdf, c2, true);
     }
     const name=`รายงาน_CFM_${Date.now()}.pdf`;
     const blob=pdf.output("blob");
