@@ -1179,16 +1179,24 @@ async function snapEl(elm){
   return c;
 }
 async function snapReport(){ return snapEl(el("report")); }
-// ใส่รูป canvas ลง PDF แบบแบ่งหน้าอัตโนมัติ
-function addCanvasToPdf(pdf, c, firstNewPage){
-  const pageW=210,pageH=297,m=10, w=pageW-m*2, h=c.height*w/c.width;
+function canvasToBlob(c){ return new Promise(res=>c.toBlob(res,"image/png")); }
+// ใส่รูป canvas ลง PDF — กันหน้าเปล่าเมื่อเนื้อหาเกิน 1 หน้าเพียงเล็กน้อย
+function addCanvasToPdf(pdf, c, newPage){
+  const pageW=210,pageH=297,m=10, w=pageW-m*2, usableH=pageH-m*2;
+  const h=c.height*w/c.width;
   const img=c.toDataURL("image/png");
-  if(firstNewPage) pdf.addPage();
-  if(h<=pageH-m*2){ pdf.addImage(img,"PNG",m,m,w,h); }
-  else{
+  if(newPage) pdf.addPage();
+  if(h<=usableH){
+    pdf.addImage(img,"PNG",m,m,w,h);
+  }else if(h<=usableH*1.2){
+    // เกิน 1 หน้าไม่เกิน 20% -> ย่อให้พอดีหน้าเดียว (กันหน้าเปล่า)
+    const h2=usableH, w2=w*usableH/h;
+    pdf.addImage(img,"PNG",m+(w-w2)/2,m,w2,h2);
+  }else{
+    // ยาวจริง -> แบ่งหลายหน้า
     let left=h, pos=m;
-    pdf.addImage(img,"PNG",m,pos,w,h); left-=(pageH-m*2);
-    while(left>0){ pdf.addPage(); pos=m-(h-left); pdf.addImage(img,"PNG",m,pos,w,h); left-=(pageH-m*2); }
+    pdf.addImage(img,"PNG",m,pos,w,h); left-=usableH;
+    while(left>0){ pdf.addPage(); pos=m-(h-left); pdf.addImage(img,"PNG",m,pos,w,h); left-=usableH; }
   }
 }
 
@@ -1223,21 +1231,26 @@ el("pngBtn").onclick=async()=>{
   if(!libReady(true,false)) return;
   const b=el("pngBtn"); b.disabled=true; b.textContent="⏳ กำลังสร้าง...";
   try{
-    const c=await snapReport();
-    const dataUrl=c.toDataURL("image/png");
-    c.toBlob(async(blob)=>{
-      const name=`รายงาน_CFM_${Date.now()}.png`;
-      const file=new File([blob],name,{type:"image/png"});
-      // 1) มือถือ: ลองแชร์ผ่านระบบก่อน
-      if(navigator.canShare && navigator.canShare({files:[file]})){
-        try{ await navigator.share({files:[file], title:"รายงาน CFM"}); return; }
-        catch(e){ if(e.name!=="AbortError") openModal(dataUrl,blob,name); return; }
-      }
-      // 2) มือถือไม่มีแชร์: เปิด modal ให้กดค้างเซฟ
-      if(isMobile()){ openModal(dataUrl,blob,name); return; }
-      // 3) เดสก์ท็อป: ดาวน์โหลดตรงๆ
-      downloadBlob(blob,name);
-    },"image/png");
+    const stamp=Date.now();
+    const items=[];
+    const c1=await snapReport();
+    items.push({blob:await canvasToBlob(c1), dataUrl:c1.toDataURL("image/png"), name:`รายงาน_CFM_${stamp}.png`});
+    // ภาพประกอบ (ถ้ามีรูป) -> ออกเป็นอีก 1 ภาพ
+    const pr=el("photoReport");
+    if(pr && pr.style.display!=="none" && pr.innerHTML.trim()){
+      const c2=await snapEl(pr);
+      items.push({blob:await canvasToBlob(c2), dataUrl:c2.toDataURL("image/png"), name:`ภาพประกอบ_CFM_${stamp}.png`});
+    }
+    const files=items.map(it=>new File([it.blob],it.name,{type:"image/png"}));
+    // 1) มือถือ: แชร์ทุกภาพพร้อมกันผ่านระบบ
+    if(navigator.canShare && navigator.canShare({files})){
+      try{ await navigator.share({files, title:"รายงาน CFM"}); return; }
+      catch(e){ if(e.name==="AbortError") return; }
+    }
+    // 2) ภาพเดียว + มือถือไม่มีแชร์: เปิด modal ให้กดค้างเซฟ
+    if(items.length===1 && isMobile()){ openModal(items[0].dataUrl, items[0].blob, items[0].name); return; }
+    // 3) เดสก์ท็อป / หลายภาพ: ดาวน์โหลดทุกไฟล์
+    items.forEach(it=>downloadBlob(it.blob,it.name));
   }catch(e){ alert("เกิดข้อผิดพลาดในการสร้างรูปภาพ: "+e.message); console.error(e); }
   b.disabled=false; b.textContent="🖼️ บันทึกรูปภาพ";
 };
