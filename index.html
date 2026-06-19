@@ -59,6 +59,8 @@ textarea{resize:vertical; min-height:80px}
 .rep-photos{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:18px }
 .rep-photo img{ width:100%; height:auto; max-height:340px; object-fit:contain; border:1px solid #ddd; border-radius:4px; display:block; background:#f8fafc }
 .rep-photo .cap{ text-align:center; font-size:.8rem; color:#555; margin-top:6px }
+.rep-photo .desc{ text-align:center; font-size:.82rem; color:#1e293b; margin-top:3px; line-height:1.4 }
+.photo-cap-input{ width:100%; margin-top:6px; padding:7px 9px; font-size:.82rem; border:1px solid var(--border); border-radius:7px; background:var(--card); color:var(--text); box-sizing:border-box }
 /* แนวทางตรวจสอบ (ในแอป) */
 .advisory{ border:1px solid #f59e0b; background:rgba(245,158,11,.1); border-radius:8px; padding:10px 12px; margin-top:8px }
 .advisory-h{ font-weight:700; color:#fbbf24; font-size:.9rem }
@@ -314,11 +316,11 @@ function newUnit(mode="diffuser"){
   if(mode==="diffuser") return {name:"",mode,heads:[ blankHead() ]};
   const pts=PTS[mode];
   const u={name:"",mode,type:"",ts:"",tr:"",faceTemp:["",""],coilCount:1,coils:[ blankCoil(pts) ]};
-  if(mode==="ahu"){ u.photos=["",""]; u.issues=[""]; }   // AHU: รูประดับเครื่อง + ปัญหาที่พบ
+  if(mode==="ahu"){ u.photos=["",""]; u.captions=["",""]; u.issues=[""]; }   // AHU: รูป + คำอธิบาย + ปัญหาที่พบ
   return u;
 }
-function blankHead(){ return {w:"",l:"",ts:"",tr:"",closed:false,note:"",v:["","","",""],photos:["",""]}; }   // หัวจ่าย: 2 ภาพ/หัว
-function blankCoil(pts){ return {w:"",h:"",v:Array(pts).fill(""),photos:["","",""]}; }                        // คอยล์: 3 ภาพ/คอยล์
+function blankHead(){ return {w:"",l:"",ts:"",tr:"",closed:false,note:"",v:["","","",""],photos:["",""],captions:["",""]}; }   // หัวจ่าย: 2 ภาพ/หัว
+function blankCoil(pts){ return {w:"",h:"",v:Array(pts).fill(""),photos:["","",""],captions:["","",""]}; }                  // คอยล์: 3 ภาพ/คอยล์
 
 function calcUnit(u){
   let cfm=0,allV=[],parts=[];
@@ -459,7 +461,7 @@ function diffuserUI(u,ui){
         </div>
         <div class="photo-box" style="margin-top:10px">
           <div class="photo-title">📸 รูปภาพประกอบหัวจ่ายนี้</div>
-          ${photoGrid(hd.photos||(hd.photos=["",""]), `h|${ui}|${hi}`, ()=>"ภาพรวม")}
+          ${photoGrid(hd.photos||(hd.photos=["",""]), hd.captions||(hd.captions=["",""]), `h|${ui}|${hi}`, ()=>"ภาพรวม")}
         </div>
       </div>`;
   });
@@ -469,15 +471,18 @@ function diffuserUI(u,ui){
 
 // สร้างกริดรูปจาก photos array + รหัสตำแหน่ง (key) และป้ายกำกับ
 // key รูปแบบ: "u|<ui>|<pi>"  หรือ "h|<ui>|<hi>|<pi>"  หรือ "c|<ui>|<ci>|<pi>"
-function photoGrid(photos, keyPrefix, labelFn){
+function photoGrid(photos, captions, keyPrefix, labelFn){
+  captions=captions||[];
   let cells="";
   photos.forEach((img,pi)=>{
     const lab=labelFn(pi);
     const key=`${keyPrefix}|${pi}`;
+    const cap=(captions[pi]||"").replace(/"/g,'&quot;');
     cells+=`<div class="photo-cell">
       <div class="photo-lab">${lab}</div>
       ${img
-        ? `<div class="photo-thumb"><img src="${img}" alt="${lab}"><button type="button" class="photo-del" data-delphoto="${key}" title="ลบรูป">✕</button></div>`
+        ? `<div class="photo-thumb"><img src="${img}" alt="${lab}"><button type="button" class="photo-del" data-delphoto="${key}" title="ลบรูป">✕</button></div>
+           <input type="text" class="photo-cap-input" data-cap="${key}" value="${cap}" placeholder="คำอธิบายภาพ (ถ้ามี)">`
         : `<label class="photo-add">
              <input type="file" accept="image/*" data-photo="${key}" style="display:none">
              <span>📷 แตะเพื่อแนบรูป</span>
@@ -491,9 +496,10 @@ function photoUI(u,ui){
   if(u.mode!=="ahu") return "";  // หัวจ่าย/BU แนบรูปในแต่ละหัว/คอยล์แทน
   const labels=["ภาพรวมเครื่อง","ภาพคอยล์เย็น"];
   if(!u.photos) u.photos=["",""];
+  if(!u.captions) u.captions=["",""];
   return `<div class="photo-box">
     <div class="photo-title">📸 รูปภาพประกอบ (แสดงในหน้าภาพประกอบของรายงาน)</div>
-    ${photoGrid(u.photos, `u|${ui}`, pi=>labels[pi])}
+    ${photoGrid(u.photos, u.captions, `u|${ui}`, pi=>labels[pi])}
   </div>`;
 }
 
@@ -540,7 +546,7 @@ function coilUI(u,ui){
         </div>
         ${u.mode==="bu" ? `<div class="photo-box" style="margin-top:10px">
           <div class="photo-title">📸 รูปภาพประกอบคอยล์ที่ ${ci+1}</div>
-          ${photoGrid(co.photos||(co.photos=["","",""]), `c|${ui}|${ci}`, ()=>`ภาพรวมคอยล์ ${ci+1}`)}
+          ${photoGrid(co.photos||(co.photos=["","",""]), co.captions||(co.captions=["","",""]), `c|${ui}|${ci}`, ()=>`ภาพรวมคอยล์ ${ci+1}`)}
         </div>` : ""}
       </div>`;
   });
@@ -652,12 +658,12 @@ function bindEvents(){
     };
     inp.oninput=handler; inp.onchange=handler;
   });
-  // หาตำแหน่ง photos array จาก key: "u|ui|pi" / "h|ui|hi|pi" / "c|ui|ci|pi"
+  // หาตำแหน่ง photos/captions จาก key: "u|ui|pi" / "h|ui|hi|pi" / "c|ui|ci|pi"
   function resolvePhoto(key){
     const p=key.split("|"); const kind=p[0];
-    if(kind==="u"){ const ui=+p[1]; if(!units[ui].photos) units[ui].photos=["",""]; return {arr:units[ui].photos, pi:+p[2]}; }
-    if(kind==="h"){ const ui=+p[1], hi=+p[2]; const hd=units[ui].heads[hi]; if(!hd.photos) hd.photos=["",""]; return {arr:hd.photos, pi:+p[3]}; }
-    if(kind==="c"){ const ui=+p[1], ci=+p[2]; const co=units[ui].coils[ci]; if(!co.photos) co.photos=["","",""]; return {arr:co.photos, pi:+p[3]}; }
+    if(kind==="u"){ const u=units[+p[1]]; if(!u.photos)u.photos=["",""]; if(!u.captions)u.captions=["",""]; return {arr:u.photos, caps:u.captions, pi:+p[2]}; }
+    if(kind==="h"){ const hd=units[+p[1]].heads[+p[2]]; if(!hd.photos)hd.photos=["",""]; if(!hd.captions)hd.captions=["",""]; return {arr:hd.photos, caps:hd.captions, pi:+p[3]}; }
+    if(kind==="c"){ const co=units[+p[1]].coils[+p[2]]; if(!co.photos)co.photos=["","",""]; if(!co.captions)co.captions=["","",""]; return {arr:co.photos, caps:co.captions, pi:+p[3]}; }
     return null;
   }
   // แนบรูป
@@ -670,10 +676,16 @@ function bindEvents(){
       renderUnits(); save();
     }catch(err){ alert("ไม่สามารถโหลดรูปนี้ได้ ลองเลือกรูปใหม่อีกครั้ง"); console.error(err); }
   });
-  // ลบรูป
+  // คำอธิบายภาพ (ไม่ต้อง render ใหม่ — กันโฟกัสหลุดขณะพิมพ์)
+  document.querySelectorAll("[data-cap]").forEach(inp=>inp.oninput=e=>{
+    const loc=resolvePhoto(e.target.dataset.cap);
+    if(loc) loc.caps[loc.pi]=e.target.value;
+    recompute(); save();
+  });
+  // ลบรูป (ล้างคำอธิบายด้วย)
   document.querySelectorAll("[data-delphoto]").forEach(b=>b.onclick=e=>{
     const loc=resolvePhoto(e.currentTarget.dataset.delphoto);
-    if(loc) loc.arr[loc.pi]="";
+    if(loc){ loc.arr[loc.pi]=""; loc.caps[loc.pi]=""; }
     renderUnits(); save();
   });
   // ปัญหาที่พบ (AHU)
@@ -1047,19 +1059,20 @@ function renderReport(grandCFM){
   const pr=el("photoReport");
   // รวบรวมรูปทั้งหมดเป็นกลุ่มๆ ตามโหมด
   function collectGroups(u,ui){
-    const groups=[]; // {title, items:[{img,cap}]}
+    const groups=[]; // {title, items:[{img,cap,desc}]}
+    const mk=(photos,caps,labelFn)=> (photos||[]).map((p,pi)=> p?{img:p, cap:labelFn(pi), desc:(caps&&caps[pi])||""}:null ).filter(Boolean);
     if(u.mode==="ahu"){
       const labs=["ภาพรวมเครื่อง","ภาพคอยล์เย็น"];
-      const items=(u.photos||[]).map((p,pi)=>p?{img:p,cap:labs[pi]}:null).filter(Boolean);
+      const items=mk(u.photos,u.captions,pi=>labs[pi]);
       if(items.length) groups.push({title:`เครื่องที่ ${ui+1}: ${u.name||MODE_TH[u.mode]} (${MODE_TH[u.mode]})`, items});
     }else if(u.mode==="diffuser"){
       u.heads.forEach((hd,hi)=>{
-        const items=(hd.photos||[]).map(p=>p?{img:p,cap:"ภาพรวม"}:null).filter(Boolean);
+        const items=mk(hd.photos,hd.captions,()=>"ภาพรวม");
         if(items.length) groups.push({title:`เครื่องที่ ${ui+1}: ${u.name||MODE_TH[u.mode]} — หัวจ่ายที่ ${hi+1}`, items});
       });
     }else{ // bu
       u.coils.forEach((co,ci)=>{
-        const items=(co.photos||[]).map(p=>p?{img:p,cap:`ภาพรวมคอยล์ ${ci+1}`}:null).filter(Boolean);
+        const items=mk(co.photos,co.captions,()=>`ภาพรวมคอยล์ ${ci+1}`);
         if(items.length) groups.push({title:`เครื่องที่ ${ui+1}: ${u.name||MODE_TH[u.mode]} — คอยล์ที่ ${ci+1}`, items});
       });
     }
@@ -1072,7 +1085,10 @@ function renderReport(grandCFM){
       <div class="rep-meta"><span><b>ผู้กรอกข้อมูล:</b> ${insp}</span><span><b>${measureDate?"วันที่ตรวจวัด":"วันที่"}:</b> ${measureDate?thaiDate(measureDTValue(), !!getMeasureTime()):thaiDate()}</span></div>`;
     allGroups.forEach(g=>{
       ph+=`<div class="rep-h2">${g.title}</div><div class="rep-photos">`;
-      g.items.forEach(it=>{ ph+=`<div class="rep-photo"><img src="${it.img}"><div class="cap">${it.cap}</div></div>`; });
+      g.items.forEach(it=>{
+        const desc = it.desc && it.desc.trim() ? `<div class="desc">${it.desc.trim()}</div>` : "";
+        ph+=`<div class="rep-photo"><img src="${it.img}"><div class="cap">${it.cap}</div>${desc}</div>`;
+      });
       ph+=`</div>`;
     });
     ph+=`<div class="rep-foot">เอกสารนี้สร้างโดยโปรแกรมคำนวณ CFM · ภาพประกอบการตรวจวัด</div>`;
@@ -1105,9 +1121,10 @@ function load(){
     units.forEach(u=>{
       if((u.mode==="bu"||u.mode==="ahu") && !u.faceTemp) u.faceTemp=["",""];
       if(u.mode==="ahu" && !u.photos) u.photos=["",""];
+      if(u.mode==="ahu" && !u.captions) u.captions=["",""];
       if(u.mode==="ahu" && !u.issues) u.issues=[""];
-      if(u.heads) u.heads.forEach(h=>{ if(!h.photos) h.photos=["",""]; });
-      if(u.coils) u.coils.forEach(c=>{ if(!c.photos) c.photos=["","",""]; });
+      if(u.heads) u.heads.forEach(h=>{ if(!h.photos) h.photos=["",""]; if(!h.captions) h.captions=["",""]; });
+      if(u.coils) u.coils.forEach(c=>{ if(!c.photos) c.photos=["","",""]; if(!c.captions) c.captions=["","",""]; });
     });
     el("inspector").value=d.inspector||""; el("note").value=d.note||"";
     measureDate=d.measureDate||"";
