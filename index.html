@@ -964,10 +964,10 @@ function renderReport(grandCFM){
       if(found.length || adv.length){
         body+=`<div class="rep-h2">การวิเคราะห์ปัญหา</div><table class="rt"><tbody>`;
         if(found.length){
-          body+=`<tr><td class="l" style="width:32%">ปัญหาที่พบหน้างาน</td><td>${found.map(f=>`• ${f}`).join("<br>")}</td></tr>`;
+          body+=`<tr><td class="l" style="width:32%">ปัญหาที่พบหน้างาน</td><td style="text-align:left">${found.map(f=>`• ${f}`).join("<br>")}</td></tr>`;
         }
         if(adv.length){
-          body+=`<tr><td class="l">แนวทางการตรวจสอบยืนยันเพิ่มเติม<br><span style="font-weight:400;font-size:.72rem;color:#888">(วิเคราะห์จากข้อมูลฝั่งลม · อ้างอิงเกณฑ์ ASHRAE)</span></td><td>${adv.map(a=>`• ${a}`).join("<br>")}</td></tr>`;
+          body+=`<tr><td class="l">แนวทางการตรวจสอบยืนยันเพิ่มเติม<br><span style="font-weight:400;font-size:.72rem;color:#888">(วิเคราะห์จากข้อมูลฝั่งลม · อ้างอิงเกณฑ์ ASHRAE)</span></td><td style="text-align:left">${adv.map(a=>`• ${a}`).join("<br>")}</td></tr>`;
         }
         body+=`</tbody></table>`;
       }
