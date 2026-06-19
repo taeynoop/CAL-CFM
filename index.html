@@ -1360,16 +1360,16 @@ el("pngBtn").onclick=async()=>{
     }
     const files=items.map(it=>new File([it.blob],it.name,{type:"image/png"}));
     // 1) มือถือ: แชร์ทุกภาพพร้อมกันผ่านระบบ
-    if(navigator.canShare && navigator.canShare({files})){
-      try{ await navigator.share({files, title:"รายงาน CFM"}); return; }
-      catch(e){ if(e.name==="AbortError") return; }
+    if(isMobile() && navigator.canShare && navigator.canShare({files})){
+      try{ await navigator.share({files, title:"รายงาน CFM"}); }
+      catch(e){ if(e.name!=="AbortError") throw e; }
     }
     // 2) ภาพเดียว + มือถือไม่มีแชร์: เปิด modal ให้กดค้างเซฟ
-    if(items.length===1 && isMobile()){ openModal(items[0].dataUrl, items[0].blob, items[0].name); return; }
-    // 3) เดสก์ท็อป / หลายภาพ: ดาวน์โหลดทุกไฟล์
-    items.forEach(it=>downloadBlob(it.blob,it.name));
+    else if(items.length===1 && isMobile()){ openModal(items[0].dataUrl, items[0].blob, items[0].name); }
+    // 3) เดสก์ท็อป (หรือกรณีอื่น): ดาวน์โหลดทุกไฟล์ตรงๆ
+    else { items.forEach(it=>downloadBlob(it.blob,it.name)); }
   }catch(e){ alert("เกิดข้อผิดพลาดในการสร้างรูปภาพ: "+e.message); console.error(e); }
-  b.disabled=false; b.textContent="🖼️ บันทึกรูปภาพ";
+  finally{ b.disabled=false; b.textContent="🖼️ บันทึกรูปภาพ"; }
 };
 
 el("pdfBtn").onclick=async()=>{
@@ -1389,15 +1389,15 @@ el("pdfBtn").onclick=async()=>{
     const name=`รายงาน_CFM_${Date.now()}.pdf`;
     const blob=pdf.output("blob");
     const file=new File([blob],name,{type:"application/pdf"});
-    // มือถือ: ลองแชร์ผ่านระบบ
-    if(navigator.canShare && navigator.canShare({files:[file]})){
+    // มือถือ: ลองแชร์ผ่านระบบ / เดสก์ท็อป: ดาวน์โหลดตรงๆ
+    if(isMobile() && navigator.canShare && navigator.canShare({files:[file]})){
       try{ await navigator.share({files:[file], title:"รายงาน CFM"}); }
       catch(e){ if(e.name!=="AbortError") downloadBlob(blob,name); }
     }else{
       downloadBlob(blob,name);
     }
   }catch(e){ alert("เกิดข้อผิดพลาดในการสร้าง PDF: "+e.message); console.error(e); }
-  b.disabled=false; b.textContent="📄 บันทึก PDF";
+  finally{ b.disabled=false; b.textContent="📄 บันทึก PDF"; }
 };
 
 /* ===== เริ่มต้น ===== */
