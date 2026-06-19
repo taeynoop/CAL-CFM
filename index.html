@@ -59,6 +59,15 @@ textarea{resize:vertical; min-height:80px}
 .rep-photos{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:18px }
 .rep-photo img{ width:100%; height:auto; max-height:340px; object-fit:contain; border:1px solid #ddd; border-radius:4px; display:block; background:#f8fafc }
 .rep-photo .cap{ text-align:center; font-size:.8rem; color:#555; margin-top:6px }
+/* แนวทางตรวจสอบ (ในแอป) */
+.advisory{ border:1px solid #f59e0b; background:rgba(245,158,11,.1); border-radius:8px; padding:10px 12px; margin-top:8px }
+.advisory-h{ font-weight:700; color:#fbbf24; font-size:.9rem }
+.advisory-sub{ font-size:.72rem; color:var(--subtext); margin-bottom:6px }
+.advisory-item{ font-size:.85rem; margin-top:4px; line-height:1.5 }
+/* แถวปัญหาที่พบ */
+.issue-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px }
+.issue-row select{ flex:1 }
+.issue-del{ width:34px; height:34px; flex:0 0 auto; border:1px solid var(--border); border-radius:8px; background:transparent; color:#f87171; cursor:pointer; font-size:14px }
 /* ===== ปฏิทินเลือกวันที่ ===== */
 .picker-btn{
   width:100%; padding:13px; border-radius:10px; border:1px solid var(--border);
@@ -305,7 +314,7 @@ function newUnit(mode="diffuser"){
   if(mode==="diffuser") return {name:"",mode,heads:[ blankHead() ]};
   const pts=PTS[mode];
   const u={name:"",mode,type:"",ts:"",tr:"",faceTemp:["",""],coilCount:1,coils:[ blankCoil(pts) ]};
-  if(mode==="ahu") u.photos=["",""];   // AHU: รูประดับเครื่อง 2 ภาพ
+  if(mode==="ahu"){ u.photos=["",""]; u.issues=[""]; }   // AHU: รูประดับเครื่อง + ปัญหาที่พบ
   return u;
 }
 function blankHead(){ return {w:"",l:"",ts:"",tr:"",closed:false,note:"",v:["","","",""],photos:["",""]}; }   // หัวจ่าย: 2 ภาพ/หัว
@@ -350,6 +359,32 @@ function effStatus(eff){
   if(eff<=50) return {txt:"เห็นควรเข้าตรวจสอบสาเหตุ", color:"#dc2626", bg:"#fee2e2"};
   if(eff<=80) return {txt:"ต่ำกว่ามาตรฐาน",          color:"#ea580c", bg:"#ffedd5"};
   return {txt:"อยู่ในเกณฑ์มาตรฐาน", color:"#16a34a", bg:"#dcfce7"};
+}
+
+// แนวทางการตรวจสอบยืนยันเพิ่มเติม (เฉพาะ AHU) — วิเคราะห์จากข้อมูลฝั่งลม อ้างอิงเกณฑ์ ASHRAE
+function ahuAdvisories(u){
+  const out=[];
+  if(u.mode!=="ahu") return out;
+  const r=calcUnit(u);
+  // ผู้ตรวจระบุปัญหาที่พบแล้วหรือยัง (ใช้ตัดข้อความที่ซ้ำกัน)
+  const found=(u.issues||[]).filter(Boolean);
+  const foundClog = found.includes("คอยล์ตัน") || found.includes("ฟิลเตอร์ตัน");
+  // 1) CFM ต่ำกว่า 70% ของสเปก — ซ่อนถ้าผู้ตรวจระบุคอยล์ตัน/ฟิลเตอร์ตันแล้ว
+  if(u.type && AHU_SPEC[u.type]){
+    const eff=r.cfm/AHU_SPEC[u.type]*100;
+    if(eff>0 && eff<70 && !foundClog){
+      out.push("ปริมาณลมต่ำกว่าสเปกมาก (ต่ำกว่า 70%) — ควรตรวจสอบคอยล์เย็นและฟิลเตอร์ว่าตันหรือไม่");
+    }
+  }
+  // 2) อุณหภูมิหน้าคอยล์เฉลี่ย > 20°C
+  const face=(u.faceTemp||[]).filter(x=>x!=="");
+  if(face.length){
+    const favg=avgOf(u.faceTemp||[]).avg;
+    if(favg>20){
+      out.push("อุณหภูมิหน้าคอยล์สูงกว่าเกณฑ์ (เกิน 20°C) — ควรตรวจสอบ: วาล์วน้ำเย็น (Motorized valve) ว่าเปิดหรือไม่ และ Thermostat ห้อง (setpoint) ว่าตั้งไว้ที่เท่าใด");
+    }
+  }
+  return out;
 }
 
 /* ===== วาด UI ===== */
@@ -535,6 +570,26 @@ function coilUI(u,ui){
         : `<button class="add-mini" data-addface="${ui}" ${(u.faceTemp||[]).length>=6?"disabled":""}>➕ เพิ่มจุดวัดหน้าคอยล์ (${(u.faceTemp||[]).length}/6)</button>`
       }
     </div>`;
+  // ===== ปัญหาที่พบหน้างาน (เฉพาะ AHU) =====
+  if(u.mode==="ahu"){
+    const issues=u.issues||(u.issues=[""]);
+    const opts=["คอยล์ตัน","คอยล์รั่ว","ฟิลเตอร์ตัน","ห้อง Chamber ชำรุด","Motorized เสีย"];
+    let rows="";
+    issues.forEach((val,ii)=>{
+      rows+=`<div class="issue-row">
+        <select data-issue="${ui}|${ii}">
+          <option value="">— เลือกปัญหาที่พบ —</option>
+          ${opts.map(o=>`<option value="${o}" ${val===o?"selected":""}>${o}</option>`).join("")}
+        </select>
+        ${issues.length>1?`<button type="button" class="issue-del" data-delissue="${ui}|${ii}" title="ลบ">✕</button>`:""}
+      </div>`;
+    });
+    html+=`<div class="field" style="margin-top:14px">
+      <label>🔧 ปัญหาที่พบหน้างาน (ถ้ามี)</label>
+      <div id="issues-${ui}">${rows}</div>
+      <button class="add-mini" data-addissue="${ui}" ${issues.length>=opts.length?"disabled":""}>➕ เพิ่มปัญหา</button>
+    </div>`;
+  }
   return html;
 }
 
@@ -621,6 +676,24 @@ function bindEvents(){
     if(loc) loc.arr[loc.pi]="";
     renderUnits(); save();
   });
+  // ปัญหาที่พบ (AHU)
+  document.querySelectorAll("[data-issue]").forEach(s=>s.onchange=e=>{
+    const [ui,ii]=e.target.dataset.issue.split("|").map(Number);
+    if(!units[ui].issues) units[ui].issues=[""];
+    units[ui].issues[ii]=e.target.value;
+    recompute(); save();
+  });
+  document.querySelectorAll("[data-addissue]").forEach(b=>b.onclick=e=>{
+    const ui=+e.currentTarget.dataset.addissue;
+    if(!units[ui].issues) units[ui].issues=[""];
+    units[ui].issues.push(""); renderUnits();
+  });
+  document.querySelectorAll("[data-delissue]").forEach(b=>b.onclick=e=>{
+    const [ui,ii]=e.currentTarget.dataset.delissue.split("|").map(Number);
+    units[ui].issues.splice(ii,1);
+    if(!units[ui].issues.length) units[ui].issues=[""];
+    renderUnits(); save();
+  });
 }
 
 // ย่อรูปด้วย canvas ให้เล็กลงก่อนเก็บ (ลดขนาดไฟล์)
@@ -668,6 +741,17 @@ function recompute(){
           <div class="r"><span>สเปก Type ${u.type}</span><b>${fmt(spec)} CFM</b></div>
           <div class="r"><span>ประสิทธิภาพเทียบสเปก</span><b style="color:${es.color}">${fmt2(eff)}%</b></div>
           <div class="r"><span>ผลประเมิน</span><b style="color:${es.color}">${es.txt}</b></div></div>`;
+      }
+      // AHU: แนวทางการตรวจสอบยืนยันเพิ่มเติม
+      if(u.mode==="ahu"){
+        const adv=ahuAdvisories(u);
+        if(adv.length){
+          extra+=`<div class="advisory">
+            <div class="advisory-h">🔎 แนวทางการตรวจสอบยืนยันเพิ่มเติม</div>
+            <div class="advisory-sub">วิเคราะห์จากข้อมูลฝั่งลม · อ้างอิงเกณฑ์ ASHRAE</div>
+            ${adv.map(t=>`<div class="advisory-item">• ${t}</div>`).join("")}
+          </div>`;
+        }
       }
       box.innerHTML=`
         <div class="r"><span>ความเร็วเฉลี่ย</span><b>${fmt2(r.avgV)} FPM</b></div>
@@ -873,6 +957,21 @@ function renderReport(grandCFM){
           <tr class="tot"><td class="l">ประสิทธิภาพเทียบสเปก</td><td style="color:${es.color}">${fmt2(eff)}% &nbsp;(${es.txt})</td></tr>
         </tbody></table>`;
     }
+    // AHU: ปัญหาที่พบหน้างาน + แนวทางการตรวจสอบยืนยันเพิ่มเติม
+    if(u.mode==="ahu"){
+      const found=(u.issues||[]).filter(Boolean);
+      const adv=ahuAdvisories(u);
+      if(found.length || adv.length){
+        body+=`<div class="rep-h2">การวิเคราะห์ปัญหา</div><table class="rt"><tbody>`;
+        if(found.length){
+          body+=`<tr><td class="l" style="width:32%">ปัญหาที่พบหน้างาน</td><td>${found.map(f=>`• ${f}`).join("<br>")}</td></tr>`;
+        }
+        if(adv.length){
+          body+=`<tr><td class="l">แนวทางการตรวจสอบยืนยันเพิ่มเติม<br><span style="font-weight:400;font-size:.72rem;color:#888">(วิเคราะห์จากข้อมูลฝั่งลม · อ้างอิงเกณฑ์ ASHRAE)</span></td><td>${adv.map(a=>`• ${a}`).join("<br>")}</td></tr>`;
+        }
+        body+=`</tbody></table>`;
+      }
+    }
   });
 
   if(units.length){
@@ -1006,6 +1105,7 @@ function load(){
     units.forEach(u=>{
       if((u.mode==="bu"||u.mode==="ahu") && !u.faceTemp) u.faceTemp=["",""];
       if(u.mode==="ahu" && !u.photos) u.photos=["",""];
+      if(u.mode==="ahu" && !u.issues) u.issues=[""];
       if(u.heads) u.heads.forEach(h=>{ if(!h.photos) h.photos=["",""]; });
       if(u.coils) u.coils.forEach(c=>{ if(!c.photos) c.photos=["","",""]; });
     });
