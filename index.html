@@ -1366,8 +1366,13 @@ el("pngBtn").onclick=async()=>{
     }
     // 2) ภาพเดียว + มือถือไม่มีแชร์: เปิด modal ให้กดค้างเซฟ
     else if(items.length===1 && isMobile()){ openModal(items[0].dataUrl, items[0].blob, items[0].name); }
-    // 3) เดสก์ท็อป (หรือกรณีอื่น): ดาวน์โหลดทุกไฟล์ตรงๆ
-    else { items.forEach(it=>downloadBlob(it.blob,it.name)); }
+    // 3) เดสก์ท็อป (หรือกรณีอื่น): ดาวน์โหลดทุกไฟล์ตรงๆ (หน่วงเวลากันเบราว์เซอร์บล็อกไฟล์ที่ 2)
+    else {
+      for(let i=0;i<items.length;i++){
+        downloadBlob(items[i].blob, items[i].name);
+        if(i<items.length-1) await new Promise(r=>setTimeout(r,700));
+      }
+    }
   }catch(e){ alert("เกิดข้อผิดพลาดในการสร้างรูปภาพ: "+e.message); console.error(e); }
   finally{ b.disabled=false; b.textContent="🖼️ บันทึกรูปภาพ"; }
 };
